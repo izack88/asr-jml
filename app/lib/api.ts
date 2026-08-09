@@ -19,14 +19,20 @@ export async function transcribeAudio(
   return (await res.json()) as TranscribeResponse;
 }
 
+/**
+ * `known` passes translations of this sentence the user has already seen, so a
+ * new target language stays consistent with them instead of re-guessing the
+ * meaning on its own.
+ */
 export async function translateText(
   transcript: string,
   targetCode: string,
+  known?: Record<string, string>,
 ): Promise<TranslateResponse> {
   const res = await fetch("/api/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: transcript, target: targetCode }),
+    body: JSON.stringify({ text: transcript, target: targetCode, known }),
   });
   if (!res.ok) throw new Error(`Traduction échouée (${res.status})`);
   return (await res.json()) as TranslateResponse;
