@@ -154,18 +154,8 @@ export function VoiceStudio() {
         },
       });
 
-      // Anchor on the translations already on screen so languages agree.
-      const known: Record<string, string> = {};
-      for (const t of Object.values(turn.translations)) {
-        if (t.status === "done" && t.text) known[t.code] = t.text;
-      }
-
       try {
-        const { translation } = await translateText(
-          turn.transcript,
-          code,
-          known,
-        );
+        const { translation } = await translateText(turn.transcript, code);
         setUtterances((prev) =>
           prev.map((u) =>
             u.id === utteranceId

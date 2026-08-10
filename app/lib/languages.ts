@@ -22,13 +22,22 @@ export const SOURCE_LANGUAGE: Language = {
   short: "Fɔ",
 };
 
+/**
+ * Codes are what we send to the translation provider, so every entry here must
+ * be one it genuinely translates into — see SUPPORTED_TARGETS in
+ * app/api/translate/route.ts, and the warning there about codes it accepts but
+ * silently answers in English.
+ *
+ * Goun (gun/guw) and Mina (gen/gej) were dropped: the provider rejects their
+ * ISO codes outright and answers English under the loose ones.
+ */
 export const TARGET_LANGUAGES: Language[] = [
   { code: "fr", label: "Français", endonym: "Français", short: "Fr" },
   { code: "en", label: "Anglais", endonym: "English", short: "En" },
   { code: "ee", label: "Éwé", endonym: "Eʋegbe", short: "Eʋ" },
   { code: "yo", label: "Yoruba", endonym: "Yorùbá", short: "Yo" },
-  { code: "gun", label: "Goun", endonym: "Gungbe", short: "Gu" },
-  { code: "gen", label: "Mina", endonym: "Gɛngbe", short: "Gɛ" },
+  { code: "ff", label: "Peul", endonym: "Fulfulde", short: "Fu" },
+  { code: "ha", label: "Haoussa", endonym: "Hausa", short: "Ha" },
 ];
 
 export function getLanguage(code: string): Language | undefined {

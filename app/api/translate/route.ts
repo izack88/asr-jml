@@ -2,80 +2,55 @@ import { getLanguage, SOURCE_LANGUAGE } from "@/app/lib/languages";
 import type { TranslateResponse } from "@/app/lib/types";
 
 /**
- * Translation of a Fon transcript via an OpenAI model.
+ * Translation of a Fon transcript via the RapidAPI "multi-traduction" service
+ * (a Google Translate front end).
  *
- * Request: JSON { text, target, known? }. Response: { code, translation }.
- * Requires OPENAI_API_KEY; OPENAI_MODEL overrides the default model.
+ * Request: JSON { text, target }. Response: { code, translation }.
+ * Requires RAPIDAPI_KEY in the environment.
  *
- * `known` carries translations of this same sentence already shown to the user
- * (code → text). Each target is a separate request, so without that anchor the
- * model re-guesses the meaning every time and the languages contradict each
- * other — measurably so on ambiguous Fon input. Passing it keeps them aligned.
+ * The upstream answers `["translated text"]` on success. Two of its behaviours
+ * shape the code below:
  *
- * Model choice matters more than usual here: Fon is low-resource, and the
- * cheaper tiers produce confident nonsense on it. Default to the flagship.
+ *  - An unknown target code does NOT fail. It silently returns *English* with
+ *    HTTP 200 — verified with "zzz", "mina" and "goun", all of which came back
+ *    byte-identical to `to: "en"`. Handing that to the UI would label English
+ *    text as Mina, so only codes known to be genuinely supported are sent.
+ *  - Rejected codes answer with a Google HTML error page, not JSON.
  */
 
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-5.6-sol";
+const RAPIDAPI_HOST = "rapid-translate-multi-traduction.p.rapidapi.com";
+const TRANSLATE_URL = `https://${RAPIDAPI_HOST}/t`;
 
-type OpenAIResponsesResult = {
-  output_text?: string;
-  output?: Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-};
+/**
+ * Target codes the provider actually translates into, each verified by checking
+ * its output differs from English on two different sentences.
+ *
+ * This mirrors TARGET_LANGUAGES today, and stays as the safety net: adding a
+ * language to the UI without confirming it here means users would be shown
+ * English labelled as that language. Codes checked and rejected upstream:
+ * `gun`/`guw` (Goun), `gen`/`gej` (Mina), `mos`, `bba`, `kbp`, `dje`, `nqo`.
+ */
+const SUPPORTED_TARGETS = new Set(["fr", "en", "ee", "yo", "ff", "ha"]);
 
-function extractOutputText(data: OpenAIResponsesResult): string {
-  if (typeof data.output_text === "string") return data.output_text;
-
-  const chunks: string[] = [];
-  for (const item of data.output ?? []) {
-    if (item.type !== "message") continue;
-    for (const part of item.content ?? []) {
-      if (part.type === "output_text" && typeof part.text === "string") {
-        chunks.push(part.text);
-      }
-    }
+/** Pull the translated string out of `["text"]`, or `"text"`. */
+function extractTranslation(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  if (Array.isArray(payload)) {
+    const first = payload.find((v) => typeof v === "string" && v.trim());
+    if (typeof first === "string") return first;
   }
-  return chunks.join("");
-}
-
-/** Render already-known translations as prompt context, newest-language last. */
-function buildAnchor(
-  known: Record<string, string> | undefined,
-  target: string,
-): string {
-  if (!known) return "";
-
-  const lines: string[] = [];
-  for (const [code, text] of Object.entries(known)) {
-    if (code === target || typeof text !== "string" || !text.trim()) continue;
-    const language = getLanguage(code);
-    lines.push(`- ${language ? language.label : code}: ${text.trim()}`);
-  }
-  if (lines.length === 0) return "";
-
-  return (
-    "\n\nThis same Fon sentence has already been translated as:\n" +
-    lines.join("\n") +
-    "\nYour translation must convey exactly that same meaning."
-  );
+  return "";
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let payload: {
-    text?: string;
-    target?: string;
-    known?: Record<string, string>;
-  };
+  let payload: { text?: string; target?: string };
   try {
     payload = await request.json();
   } catch {
     return Response.json({ error: "JSON invalide." }, { status: 400 });
   }
 
-  const { text, target, known } = payload;
+  const { text, target } = payload;
   if (!text || !target) {
     return Response.json(
       { error: "Champs « text » et « target » requis." },
@@ -83,36 +58,40 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.RAPIDAPI_KEY;
   if (!apiKey) {
     return Response.json(
-      { error: "OPENAI_API_KEY n'est pas configurée sur le serveur." },
+      { error: "RAPIDAPI_KEY n'est pas configurée sur le serveur." },
       { status: 500 },
     );
   }
 
-  const targetLanguage = getLanguage(target);
-  const targetName = targetLanguage
-    ? `${targetLanguage.label} (${targetLanguage.endonym})`
-    : target;
+  // Refuse rather than let the provider answer in English under this label.
+  if (!SUPPORTED_TARGETS.has(target)) {
+    const language = getLanguage(target);
+    return Response.json(
+      {
+        error: `Le service de traduction ne prend pas encore en charge ${
+          language ? language.label : target
+        }.`,
+      },
+      { status: 501 },
+    );
+  }
 
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch("https://api.openai.com/v1/responses", {
+    upstreamRes = await fetch(TRANSLATE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        "x-rapidapi-key": apiKey,
+        "x-rapidapi-host": RAPIDAPI_HOST,
       },
       body: JSON.stringify({
-        model: OPENAI_MODEL,
-        reasoning: { effort: "low" },
-        instructions:
-          `You are an expert translator of ${SOURCE_LANGUAGE.label} (${SOURCE_LANGUAGE.endonym}), ` +
-          "a Gbe language of West Africa, into other regional languages. Translate the user's " +
-          `message into ${targetName}. Reply with only the translation — no quotes, no notes, no explanations.` +
-          buildAnchor(known, target),
-        input: text,
+        from: SOURCE_LANGUAGE.code,
+        to: target,
+        q: [text],
       }),
     });
   } catch {
@@ -123,21 +102,27 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (!upstreamRes.ok) {
-    const detail = await upstreamRes.text().catch(() => "");
     return Response.json(
-      { error: `Traduction échouée : ${detail || upstreamRes.statusText}` },
-      { status: upstreamRes.status },
+      { error: `Traduction échouée (erreur ${upstreamRes.status}).` },
+      { status: upstreamRes.status === 400 ? 502 : upstreamRes.status },
     );
   }
 
-  const data = (await upstreamRes.json()) as OpenAIResponsesResult;
-  const translation = extractOutputText(data).trim();
+  // A rejected code answers with an HTML error page, so don't assume JSON.
+  let data: unknown;
+  try {
+    data = await upstreamRes.json();
+  } catch {
+    return Response.json(
+      { error: "Réponse inattendue du service de traduction." },
+      { status: 502 },
+    );
+  }
 
-  // A blank answer is a failure, not a translation — say so rather than
-  // handing the UI an empty row it would render as nothing.
+  const translation = extractTranslation(data).trim();
   if (!translation) {
     return Response.json(
-      { error: "Le modèle n'a renvoyé aucune traduction. Réessayez." },
+      { error: "Le service n'a renvoyé aucune traduction. Réessayez." },
       { status: 502 },
     );
   }
