@@ -7,7 +7,47 @@ import {
   TARGET_LANGUAGES,
   getLanguage,
 } from "../lib/languages";
-import { CheckIcon, CopyIcon, PlayIcon } from "./icons";
+import {
+  AlertIcon,
+  CheckIcon,
+  CopyIcon,
+  PlayIcon,
+  RetryIcon,
+} from "./icons";
+
+/** A failure with its reason, and a way out. */
+function ErrorNotice({
+  title,
+  message,
+  onRetry,
+  retryLabel = "Réessayer",
+}: {
+  title: string;
+  message: string;
+  onRetry?: () => void;
+  retryLabel?: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-accent-2/40 bg-accent-2/[0.06] p-3.5">
+      <AlertIcon className="mt-0.5 size-4 shrink-0 text-accent-2" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-fg">{title}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-fg-muted">
+          {message}
+        </p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-surface-border px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:border-accent hover:text-fg"
+          >
+            <RetryIcon className="size-3.5" />
+            {retryLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -41,6 +81,7 @@ function LanguageBadge({ short }: { short: string }) {
 type TranscriptCardProps = {
   utterance: Utterance;
   onTranslate: (code: string) => void;
+  onRetryTranscription?: () => void;
   /** Briefly ringed when navigated to from search. */
   highlighted?: boolean;
 };
@@ -48,9 +89,14 @@ type TranscriptCardProps = {
 export function TranscriptCard({
   utterance,
   onTranslate,
+  onRetryTranscription,
   highlighted = false,
 }: TranscriptCardProps) {
   const transcribing = utterance.status === "transcribing";
+  const failed = utterance.status === "error";
+  // The model answered, and what it heard was silence — not a failure.
+  const noSpeech = !transcribing && !failed && utterance.transcript === "";
+  const hasText = !!utterance.transcript;
   const activeTranslations = TARGET_LANGUAGES.filter(
     (l) => utterance.translations[l.code],
   );
@@ -89,7 +135,7 @@ export function TranscriptCard({
           >
             <PlayIcon className="size-3.5" />
           </button>
-          {utterance.transcript && <CopyButton text={utterance.transcript} />}
+          {hasText && <CopyButton text={utterance.transcript!} />}
         </div>
       </div>
 
@@ -99,6 +145,32 @@ export function TranscriptCard({
           <div className="shimmer h-4 w-11/12 rounded-full bg-surface-border" />
           <div className="shimmer h-4 w-3/4 rounded-full bg-surface-border" />
         </div>
+      ) : failed ? (
+        <ErrorNotice
+          title="La transcription a échoué"
+          message={
+            utterance.error ?? "Une erreur inattendue est survenue."
+          }
+          onRetry={onRetryTranscription}
+        />
+      ) : noSpeech ? (
+        <div className="rounded-2xl border border-dashed border-surface-border p-3.5">
+          <p className="text-sm text-fg-muted">
+            Aucune parole n&apos;a été reconnue dans cet enregistrement.
+          </p>
+          <p className="mt-0.5 text-xs text-fg-subtle">
+            Parlez plus près du micro, puis relancez.
+          </p>
+          {onRetryTranscription && (
+            <button
+              onClick={onRetryTranscription}
+              className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-surface-border px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:border-accent hover:text-fg"
+            >
+              <RetryIcon className="size-3.5" />
+              Relancer la transcription
+            </button>
+          )}
+        </div>
       ) : (
         <p className="text-lg leading-relaxed text-fg">
           {utterance.transcript}
@@ -106,7 +178,7 @@ export function TranscriptCard({
       )}
 
       {/* Translation controls */}
-      {!transcribing && utterance.transcript && (
+      {hasText && (
         <div className="mt-5 border-t border-surface-border pt-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="mr-1 text-xs font-medium uppercase tracking-wide text-fg-subtle">
@@ -154,9 +226,21 @@ export function TranscriptCard({
                           <div className="shimmer h-3.5 w-2/3 rounded-full bg-surface-border" />
                         </div>
                       ) : t.status === "error" ? (
-                        <p className="text-sm text-accent-2">
-                          Traduction indisponible.
-                        </p>
+                        <div>
+                          <p className="flex items-start gap-1.5 text-sm leading-relaxed text-fg-muted">
+                            <AlertIcon className="mt-0.5 size-3.5 shrink-0 text-accent-2" />
+                            <span>
+                              {t.error ?? "La traduction a échoué."}
+                            </span>
+                          </p>
+                          <button
+                            onClick={() => onTranslate(lang.code)}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-surface-border px-2.5 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-accent hover:text-fg"
+                          >
+                            <RetryIcon className="size-3" />
+                            Réessayer
+                          </button>
+                        </div>
                       ) : (
                         <p className="text-[15px] leading-relaxed text-fg">
                           {t.text}

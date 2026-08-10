@@ -217,6 +217,41 @@ export function MoonIcon({ className }: IconProps) {
   );
 }
 
+export function AlertIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5" />
+      <path d="M12 16.2v.2" />
+    </svg>
+  );
+}
+
+export function RetryIcon({ className }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+      <path d="M20 4v4h-4" />
+    </svg>
+  );
+}
+
 export function SoundIcon({ className }: IconProps) {
   return (
     <svg

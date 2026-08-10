@@ -133,6 +133,15 @@ export async function POST(request: Request): Promise<Response> {
   const data = (await upstreamRes.json()) as OpenAIResponsesResult;
   const translation = extractOutputText(data).trim();
 
+  // A blank answer is a failure, not a translation — say so rather than
+  // handing the UI an empty row it would render as nothing.
+  if (!translation) {
+    return Response.json(
+      { error: "Le modèle n'a renvoyé aucune traduction. Réessayez." },
+      { status: 502 },
+    );
+  }
+
   const body: TranslateResponse = { code: target, translation };
   return Response.json(body);
 }

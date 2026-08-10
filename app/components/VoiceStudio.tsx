@@ -71,6 +71,7 @@ export function VoiceStudio() {
       const turn: Utterance = {
         id,
         audioUrl,
+        audioBlob: blob,
         durationSec,
         transcript: null,
         status: "transcribing",
@@ -82,14 +83,46 @@ export function VoiceStudio() {
 
       try {
         const { transcript } = await transcribeAudio(blob, durationSec);
-        patch(id, { transcript, status: "ready" });
-      } catch {
-        patch(id, { status: "error" });
+        patch(id, { transcript, status: "ready", error: undefined });
+      } catch (err) {
+        patch(id, { status: "error", error: errorMessage(err) });
       } finally {
         setBusy(false);
       }
     },
     [patch],
+  );
+
+  /** Re-run a transcription that failed, reusing the audio we kept. */
+  const handleRetryTranscription = useCallback(
+    async (utteranceId: string) => {
+      const turn = utterances.find((u) => u.id === utteranceId);
+      if (!turn) return;
+
+      patch(utteranceId, {
+        status: "transcribing",
+        transcript: null,
+        error: undefined,
+      });
+      setBusy(true);
+
+      try {
+        const { transcript } = await transcribeAudio(
+          turn.audioBlob,
+          turn.durationSec,
+        );
+        patch(utteranceId, {
+          transcript,
+          status: "ready",
+          error: undefined,
+        });
+      } catch (err) {
+        patch(utteranceId, { status: "error", error: errorMessage(err) });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [utterances, patch],
   );
 
   const handleStop = useCallback(async () => {
@@ -146,7 +179,8 @@ export function VoiceStudio() {
               : u,
           ),
         );
-      } catch {
+      } catch (err) {
+        const message = errorMessage(err);
         setUtterances((prev) =>
           prev.map((u) =>
             u.id === utteranceId
@@ -154,7 +188,12 @@ export function VoiceStudio() {
                   ...u,
                   translations: {
                     ...u.translations,
-                    [code]: { code, text: null, status: "error" },
+                    [code]: {
+                      code,
+                      text: null,
+                      status: "error",
+                      error: message,
+                    },
                   },
                 }
               : u,
@@ -204,6 +243,7 @@ export function VoiceStudio() {
                 key={u.id}
                 utterance={u}
                 onTranslate={(code) => handleTranslate(u.id, code)}
+                onRetryTranscription={() => handleRetryTranscription(u.id)}
                 highlighted={highlightId === u.id}
               />
             ))}
@@ -262,6 +302,15 @@ export function VoiceStudio() {
       </main>
     </div>
   );
+}
+
+/**
+ * The message to show for a thrown value. Our api helpers already throw
+ * reader-ready French; anything else gets a neutral fallback.
+ */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  return "Une erreur inattendue est survenue.";
 }
 
 /** Best-effort duration (seconds) of an audio file; resolves 0 if unknown. */
