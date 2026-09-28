@@ -10,7 +10,7 @@ import type { TranscribeResponse } from "@/app/lib/types";
  */
 
 const ASR_API_URL =
-  process.env.FON_ASR_API_URL ?? "https://51-159-181-68.nip.io/transcribe";
+  process.env.FON_ASR_API_URL ?? "https://51-158-36-210.sslip.io/transcribe";
 const ASR_DECODING = process.env.FON_ASR_DECODING ?? "kenlm";
 
 export async function POST(request: Request): Promise<Response> {
