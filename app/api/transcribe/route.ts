@@ -5,7 +5,7 @@ import type { TranscribeResponse } from "@/app/lib/types";
  *
  * Accepts the client's multipart/form-data (field "audio") and re-posts it to
  * the ASR service's /transcribe endpoint (fields "file" + "decoding"), which
- * returns { text: string, ... }. Runs on the Node.js runtime (default) since
+ * returns { texte: string, ... }. Runs on the Node.js runtime (default) since
  * it needs a real fetch to an external host. Authenticates with HTTP Basic
  * auth; requires FON_ASR_API_USER and FON_ASR_API_PASSWORD.
  */
@@ -64,7 +64,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const data = (await upstreamRes.json()) as { text?: string };
-  const body: TranscribeResponse = { transcript: data.text ?? "" };
+  const data = (await upstreamRes.json()) as { texte?: string };
+  const body: TranscribeResponse = { transcript: data.texte ?? "" };
   return Response.json(body);
 }
