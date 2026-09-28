@@ -6,7 +6,8 @@ import type { TranscribeResponse } from "@/app/lib/types";
  * Accepts the client's multipart/form-data (field "audio") and re-posts it to
  * the ASR service's /transcribe endpoint (fields "file" + "decoding"), which
  * returns { text: string, ... }. Runs on the Node.js runtime (default) since
- * it needs a real fetch to an external host. Requires FON_ASR_API_TOKEN.
+ * it needs a real fetch to an external host. Authenticates with HTTP Basic
+ * auth; requires FON_ASR_API_USER and FON_ASR_API_PASSWORD.
  */
 
 const ASR_API_URL =
@@ -24,13 +25,18 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const apiToken = process.env.FON_ASR_API_TOKEN;
-  if (!apiToken) {
+  const apiUser = process.env.FON_ASR_API_USER;
+  const apiPassword = process.env.FON_ASR_API_PASSWORD;
+  if (!apiUser || !apiPassword) {
     return Response.json(
-      { error: "FON_ASR_API_TOKEN n'est pas configurée sur le serveur." },
+      {
+        error:
+          "FON_ASR_API_USER / FON_ASR_API_PASSWORD ne sont pas configurées sur le serveur.",
+      },
       { status: 500 },
     );
   }
+  const basicAuth = Buffer.from(`${apiUser}:${apiPassword}`).toString("base64");
 
   const upstreamForm = new FormData();
   upstreamForm.append("file", audio, "speech.webm");
@@ -40,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     upstreamRes = await fetch(ASR_API_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiToken}` },
+      headers: { Authorization: `Basic ${basicAuth}` },
       body: upstreamForm,
     });
   } catch {
